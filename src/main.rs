@@ -6,7 +6,7 @@ use std::fs::read_to_string;
 use std::str::FromStr;
 
 fn main() {
-    day3::part2();
+    day4::part1();
 }
 
 fn load<T>(day: usize) -> Result<Vec<T>>
@@ -208,6 +208,170 @@ mod day3 {
         let co2_scrub_rating = filter(11, data, false);
 
         print_answer(3, 2, oxy_gen_rating * co2_scrub_rating)
+    }
+}
+//</editor-fold>
+
+//<editor-fold desc="Day 4">
+mod day4 {
+    use crate::*;
+    use std::collections::HashSet;
+    use std::fmt::Formatter;
+    use std::num::ParseIntError;
+
+    #[derive(Clone, Debug)]
+    struct Row {
+        numbers: HashSet<usize>,
+        called: usize,
+    }
+
+    impl Row {
+        pub fn new() -> Self {
+            Row {
+                numbers: HashSet::new(),
+                called: 0,
+            }
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct Board {
+        numbers: HashSet<usize>,
+        rows: Vec<Row>,
+    }
+
+    impl Board {
+        pub fn new(numbers: &[usize]) -> Self {
+            let mut rows: Vec<Row> = vec![Row::new(); 10];
+            for (idx, number) in numbers.iter().enumerate() {
+                rows[idx / 5].numbers.insert(*number);
+                rows[idx % 5 + 5].numbers.insert(*number);
+            }
+            Board {
+                numbers: HashSet::from_iter(numbers.to_owned()),
+                rows,
+            }
+        }
+
+        // Only returns true if this is the first row to win for this board
+        pub fn call_number(&mut self, number: usize) -> bool {
+            if self.has_won() {
+                return false;
+            }
+            for mut row in &mut self.rows {
+                if row.numbers.contains(&number) {
+                    row.called += 1;
+                }
+                if row.called == 5 {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        fn has_won(&self) -> bool {
+            for row in &self.rows {
+                if row.called == 5 {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    impl Display for Board {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            for row in &self.rows {
+                for number in &row.numbers {
+                    write!(f, "{:3}", number)?;
+                }
+                write!(f, "\n")?;
+            }
+            Ok(())
+        }
+    }
+
+    fn parse_numbers<'a>(line: impl Iterator<Item = &'a str>) -> Result<Vec<usize>> {
+        line.map(|n| n.parse::<usize>().map_err(anyhow::Error::from))
+            .collect()
+    }
+
+    fn parse_boards(data: &[String]) -> Result<Vec<Board>> {
+        let parse_lines = |lines: &[String]| -> Result<Board> {
+            let one_line = lines.join(" ").trim().to_owned();
+            let split_line = one_line.split_whitespace();
+            let numbers = parse_numbers(split_line)?;
+            Ok(Board::new(numbers.as_slice()))
+        };
+        data.chunks(6).map(parse_lines).collect()
+    }
+
+    fn parse_data() -> Result<(Vec<usize>, Vec<Board>)> {
+        let data: Vec<String> = load(4)?;
+
+        let first_line = data.first().ok_or(anyhow::Error::msg("no data"))?;
+        let numbers = parse_numbers(first_line.split(','))?;
+        let boards = parse_boards(&data[1..])?;
+
+        Ok((numbers, boards))
+    }
+
+    fn calculate_score(
+        board: &Board,
+        called_numbers: &HashSet<usize>,
+        winning_number: usize,
+    ) -> usize {
+        let sum_uncalled: usize = board.numbers.difference(called_numbers).sum();
+        sum_uncalled * winning_number
+    }
+
+    pub fn part1() -> Result<()> {
+        let (numbers, mut boards) = parse_data()?;
+
+        let mut called_numbers = HashSet::new();
+        let mut winner: Option<(Board, usize)> = None;
+
+        'calling: for number in numbers {
+            called_numbers.insert(number);
+            for mut board in &mut boards {
+                if board.call_number(number) {
+                    winner.insert((board.clone(), number));
+                    break 'calling;
+                }
+            }
+        }
+
+        let answer = winner
+            .map(|(winning_board, last_called_number)| {
+                calculate_score(&winning_board, &called_numbers, last_called_number)
+            })
+            .ok_or(anyhow::Error::msg("no winner found"))?;
+
+        print_answer(4, 1, answer)
+    }
+
+    pub fn part2() -> Result<()> {
+        let (numbers, mut boards) = parse_data()?;
+
+        let mut called_numbers = HashSet::new();
+        let mut last_winner: Option<(Board, HashSet<usize>, usize)> = None;
+
+        for number in numbers {
+            called_numbers.insert(number);
+            for mut board in &mut boards {
+                if board.call_number(number) {
+                    last_winner.insert((board.clone(), called_numbers.clone(), number));
+                }
+            }
+        }
+
+        let answer = last_winner
+            .map(|(winning_board, called_numbers, last_called_number)| {
+                calculate_score(&winning_board, &called_numbers, last_called_number)
+            })
+            .ok_or(anyhow::Error::msg("no winner found"))?;
+
+        print_answer(4, 2, answer)
     }
 }
 //</editor-fold>
