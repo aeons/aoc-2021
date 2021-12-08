@@ -1,12 +1,18 @@
 #![allow(unused)]
 
-use anyhow::Result;
 use std::fmt::Display;
 use std::fs::read_to_string;
 use std::str::FromStr;
 
-fn main() {
-    day4::part1();
+use anyhow::Result;
+
+fn main() -> Result<()> {
+    day5::part1()
+}
+
+fn load_raw(day: usize) -> Result<String> {
+    let data = read_to_string(format!("data/{:02}.txt", day))?;
+    Ok(data)
 }
 
 fn load<T>(day: usize) -> Result<Vec<T>>
@@ -19,6 +25,20 @@ where
     lines
         .map(|line| line.parse().map_err(anyhow::Error::from))
         .collect()
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("failed to parse input")]
+pub struct ParseError {
+    source: anyhow::Error,
+}
+
+impl ParseError {
+    pub fn msg(s: &'static str) -> ParseError {
+        ParseError {
+            source: anyhow::Error::msg(s),
+        }
+    }
 }
 
 fn print_answer<T: Display>(day: usize, part: usize, answer: T) -> Result<()> {
@@ -56,10 +76,10 @@ mod day1 {
 
 //<editor-fold desc="Day 2">
 mod day2 {
+    use std::fmt::Debug;
+    use std::str::FromStr;
+
     use crate::*;
-    use std::fmt::{Debug, Formatter};
-    use std::num::ParseIntError;
-    use std::str::{FromStr, SplitWhitespace};
 
     #[derive(Debug)]
     enum Direction {
@@ -214,10 +234,9 @@ mod day3 {
 
 //<editor-fold desc="Day 4">
 mod day4 {
-    use crate::*;
     use std::collections::HashSet;
-    use std::fmt::Formatter;
-    use std::num::ParseIntError;
+
+    use crate::*;
 
     #[derive(Clone, Debug)]
     struct Row {
@@ -270,24 +289,7 @@ mod day4 {
         }
 
         fn has_won(&self) -> bool {
-            for row in &self.rows {
-                if row.called == 5 {
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
-
-    impl Display for Board {
-        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-            for row in &self.rows {
-                for number in &row.numbers {
-                    write!(f, "{:3}", number)?;
-                }
-                write!(f, "\n")?;
-            }
-            Ok(())
+            self.rows.iter().find(|r| r.called == 5).is_some()
         }
     }
 
@@ -333,9 +335,9 @@ mod day4 {
 
         'calling: for number in numbers {
             called_numbers.insert(number);
-            for mut board in &mut boards {
+            for board in &mut boards {
                 if board.call_number(number) {
-                    winner.insert((board.clone(), number));
+                    winner = Some((board.clone(), number));
                     break 'calling;
                 }
             }
@@ -358,9 +360,9 @@ mod day4 {
 
         for number in numbers {
             called_numbers.insert(number);
-            for mut board in &mut boards {
+            for board in &mut boards {
                 if board.call_number(number) {
-                    last_winner.insert((board.clone(), called_numbers.clone(), number));
+                    last_winner = Some((board.clone(), called_numbers.clone(), number));
                 }
             }
         }
@@ -372,6 +374,102 @@ mod day4 {
             .ok_or(anyhow::Error::msg("no winner found"))?;
 
         print_answer(4, 2, answer)
+    }
+}
+//</editor-fold>
+
+//<editor-fold desc="Day 5">
+mod day5 {
+    use std::cmp::{max, min};
+    use std::collections::{HashMap, HashSet};
+
+    use nom::bytes::streaming::tag;
+    use nom::character::complete as c;
+    use nom::multi::separated_list1;
+    use nom::sequence::separated_pair;
+    use nom::IResult;
+
+    use crate::*;
+
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+    struct Point {
+        x: i32,
+        y: i32,
+    }
+
+    #[derive(Debug, Copy, Clone)]
+    struct Line {
+        from: Point,
+        to: Point,
+    }
+
+    impl Line {
+        pub fn covered_points(&self, diagonal: bool) -> HashSet<Point> {
+            if self.from.x == self.to.x {
+                let lo = min(self.from.y, self.to.y);
+                let hi = max(self.from.y, self.to.y);
+                HashSet::from_iter((lo..=hi).map(|y| Point { x: self.from.x, y }))
+            } else if self.from.y == self.to.y {
+                let lo = min(self.from.x, self.to.x);
+                let hi = max(self.from.x, self.to.x);
+                HashSet::from_iter((lo..=hi).map(|x| Point { x, y: self.from.y }))
+            } else if diagonal {
+                let (start, end) = if self.from.x < self.to.x {
+                    (self.from, self.to)
+                } else {
+                    (self.to, self.from)
+                };
+                let slope = if start.y < end.y { 1 } else { -1 };
+                HashSet::from_iter((0..=(end.x - start.x)).map(|i| Point {
+                    x: start.x + i,
+                    y: start.y + i * slope,
+                }))
+            } else {
+                HashSet::new()
+            }
+        }
+    }
+
+    fn parse_point(input: &str) -> IResult<&str, Point> {
+        let (input, (x, y)) = separated_pair(c::i32, tag(","), c::i32)(input)?;
+        Ok((input, Point { x, y }))
+    }
+
+    fn parse_line(input: &str) -> IResult<&str, Line> {
+        let (input, (from, to)) = separated_pair(parse_point, tag(" -> "), parse_point)(input)?;
+        Ok((input, Line { from, to }))
+    }
+
+    fn load_data() -> Result<Vec<Line>> {
+        let data = load_raw(5)?;
+        let (_, lines) =
+            separated_list1(c::line_ending, parse_line)(&data).map_err(|e| e.to_owned())?; // anyhow::Error::from)?;
+        Ok(lines)
+    }
+
+    fn covered_points(lines: Vec<Line>, diagonal: bool) -> usize {
+        let covered_points = lines.iter().map(|l| l.covered_points(true)).fold(
+            HashMap::new(),
+            |mut covered, points| {
+                for point in points {
+                    // println!("inserting {:?}", point);
+                    *covered.entry(point).or_insert(0) += 1
+                }
+                covered
+            },
+        );
+
+        covered_points.into_iter().filter(|(_, n)| *n >= 2).count()
+    }
+
+    pub fn part1() -> Result<()> {
+        let answer = covered_points(load_data()?, false);
+        print_answer(5, 1, answer)
+    }
+
+    pub fn part2() -> Result<()> {
+        let answer = covered_points(load_data()?, true);
+        print_answer(5, 2, answer)
     }
 }
 //</editor-fold>
