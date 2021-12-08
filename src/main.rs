@@ -1,4 +1,5 @@
 #![allow(unused)]
+#![warn(unused_imports)]
 
 use std::fmt::Display;
 use std::fs::read_to_string;
@@ -7,7 +8,7 @@ use std::str::FromStr;
 use anyhow::Result;
 
 fn main() -> Result<()> {
-    day5::part1()
+    day4::part1()
 }
 
 fn load_raw(day: usize) -> Result<String> {
@@ -234,13 +235,18 @@ mod day3 {
 
 //<editor-fold desc="Day 4">
 mod day4 {
+    use nom::bytes::complete::tag;
+    use nom::character::complete as c;
+    use nom::multi::{many1, many_m_n, separated_list1};
+    use nom::sequence::{preceded, terminated};
+    use nom::IResult;
     use std::collections::HashSet;
 
     use crate::*;
 
     #[derive(Clone, Debug)]
     struct Row {
-        numbers: HashSet<usize>,
+        numbers: HashSet<u32>,
         called: usize,
     }
 
@@ -255,12 +261,12 @@ mod day4 {
 
     #[derive(Clone, Debug)]
     struct Board {
-        numbers: HashSet<usize>,
+        numbers: HashSet<u32>,
         rows: Vec<Row>,
     }
 
     impl Board {
-        pub fn new(numbers: &[usize]) -> Self {
+        pub fn new(numbers: Vec<u32>) -> Self {
             let mut rows: Vec<Row> = vec![Row::new(); 10];
             for (idx, number) in numbers.iter().enumerate() {
                 rows[idx / 5].numbers.insert(*number);
@@ -273,7 +279,7 @@ mod day4 {
         }
 
         // Only returns true if this is the first row to win for this board
-        pub fn call_number(&mut self, number: usize) -> bool {
+        pub fn call_number(&mut self, number: u32) -> bool {
             if self.has_won() {
                 return false;
             }
@@ -293,45 +299,44 @@ mod day4 {
         }
     }
 
-    fn parse_numbers<'a>(line: impl Iterator<Item = &'a str>) -> Result<Vec<usize>> {
-        line.map(|n| n.parse::<usize>().map_err(anyhow::Error::from))
-            .collect()
+    fn parse_numbers(input: &str) -> IResult<&str, Vec<u32>> {
+        separated_list1(tag(","), c::u32)(input)
     }
 
-    fn parse_boards(data: &[String]) -> Result<Vec<Board>> {
-        let parse_lines = |lines: &[String]| -> Result<Board> {
-            let one_line = lines.join(" ").trim().to_owned();
-            let split_line = one_line.split_whitespace();
-            let numbers = parse_numbers(split_line)?;
-            Ok(Board::new(numbers.as_slice()))
-        };
-        data.chunks(6).map(parse_lines).collect()
+    fn parse_board(input: &str) -> IResult<&str, Board> {
+        let (input, _) = c::line_ending(input)?;
+        let row = preceded(c::space0, separated_list1(c::space1, c::u32));
+        let (input, rows) = many_m_n(5, 5, terminated(row, c::line_ending))(input)?;
+        let numbers = rows.into_iter().flatten().collect();
+
+        Ok((input, Board::new(numbers)))
     }
 
-    fn parse_data() -> Result<(Vec<usize>, Vec<Board>)> {
-        let data: Vec<String> = load(4)?;
+    fn parse_boards(input: &str) -> IResult<&str, Vec<Board>> {
+        let (input, boards) = many1(parse_board)(input)?;
 
-        let first_line = data.first().ok_or(anyhow::Error::msg("no data"))?;
-        let numbers = parse_numbers(first_line.split(','))?;
-        let boards = parse_boards(&data[1..])?;
+        Ok((input, boards))
+    }
+
+    fn load_data() -> Result<(Vec<u32>, Vec<Board>)> {
+        let input = load_raw(4)?;
+        let (input, numbers) =
+            terminated(parse_numbers, c::line_ending)(&input).map_err(|e| e.to_owned())?;
+        let (_, boards) = parse_boards(input).map_err(|e| e.to_owned())?;
 
         Ok((numbers, boards))
     }
 
-    fn calculate_score(
-        board: &Board,
-        called_numbers: &HashSet<usize>,
-        winning_number: usize,
-    ) -> usize {
-        let sum_uncalled: usize = board.numbers.difference(called_numbers).sum();
+    fn calculate_score(board: &Board, called_numbers: &HashSet<u32>, winning_number: u32) -> u32 {
+        let sum_uncalled: u32 = board.numbers.difference(called_numbers).sum();
         sum_uncalled * winning_number
     }
 
     pub fn part1() -> Result<()> {
-        let (numbers, mut boards) = parse_data()?;
+        let (numbers, mut boards) = load_data()?;
 
         let mut called_numbers = HashSet::new();
-        let mut winner: Option<(Board, usize)> = None;
+        let mut winner = None;
 
         'calling: for number in numbers {
             called_numbers.insert(number);
@@ -353,10 +358,10 @@ mod day4 {
     }
 
     pub fn part2() -> Result<()> {
-        let (numbers, mut boards) = parse_data()?;
+        let (numbers, mut boards) = load_data()?;
 
         let mut called_numbers = HashSet::new();
-        let mut last_winner: Option<(Board, HashSet<usize>, usize)> = None;
+        let mut last_winner = None;
 
         for number in numbers {
             called_numbers.insert(number);
