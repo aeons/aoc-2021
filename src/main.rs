@@ -6,9 +6,12 @@ use std::fs::read_to_string;
 use std::str::FromStr;
 
 use anyhow::Result;
+use nom::bytes::complete::tag;
+use nom::multi::separated_list1;
+use nom::{character, IResult};
 
 fn main() -> Result<()> {
-    day4::part1()
+    day6::part2()
 }
 
 fn load_raw(day: usize) -> Result<String> {
@@ -28,18 +31,8 @@ where
         .collect()
 }
 
-#[derive(thiserror::Error, Debug)]
-#[error("failed to parse input")]
-pub struct ParseError {
-    source: anyhow::Error,
-}
-
-impl ParseError {
-    pub fn msg(s: &'static str) -> ParseError {
-        ParseError {
-            source: anyhow::Error::msg(s),
-        }
-    }
+fn parse_comma_separated_numbers(input: &str) -> IResult<&str, Vec<u32>> {
+    separated_list1(tag(","), character::complete::u32)(input)
 }
 
 fn print_answer<T: Display>(day: usize, part: usize, answer: T) -> Result<()> {
@@ -235,12 +228,12 @@ mod day3 {
 
 //<editor-fold desc="Day 4">
 mod day4 {
-    use nom::bytes::complete::tag;
+    use std::collections::HashSet;
+
     use nom::character::complete as c;
     use nom::multi::{many1, many_m_n, separated_list1};
     use nom::sequence::{preceded, terminated};
     use nom::IResult;
-    use std::collections::HashSet;
 
     use crate::*;
 
@@ -299,10 +292,6 @@ mod day4 {
         }
     }
 
-    fn parse_numbers(input: &str) -> IResult<&str, Vec<u32>> {
-        separated_list1(tag(","), c::u32)(input)
-    }
-
     fn parse_board(input: &str) -> IResult<&str, Board> {
         let (input, _) = c::line_ending(input)?;
         let row = preceded(c::space0, separated_list1(c::space1, c::u32));
@@ -320,8 +309,8 @@ mod day4 {
 
     fn load_data() -> Result<(Vec<u32>, Vec<Board>)> {
         let input = load_raw(4)?;
-        let (input, numbers) =
-            terminated(parse_numbers, c::line_ending)(&input).map_err(|e| e.to_owned())?;
+        let (input, numbers) = terminated(parse_comma_separated_numbers, c::line_ending)(&input)
+            .map_err(|e| e.to_owned())?;
         let (_, boards) = parse_boards(input).map_err(|e| e.to_owned())?;
 
         Ok((numbers, boards))
@@ -475,6 +464,48 @@ mod day5 {
     pub fn part2() -> Result<()> {
         let answer = covered_points(load_data()?, true);
         print_answer(5, 2, answer)
+    }
+}
+//</editor-fold>
+
+//<editor-fold desc="Day 6">
+mod day6 {
+    use crate::*;
+    use nom::ToUsize;
+
+    fn load_data() -> Result<Vec<u32>> {
+        let input = load_raw(6)?;
+        let (_, lantern_fish) =
+            parse_comma_separated_numbers(input.as_ref()).map_err(|e| e.to_owned())?;
+
+        Ok(lantern_fish)
+    }
+
+    fn breed_lantern_fish(days: usize) -> Result<usize> {
+        let mut fish = [0; 9];
+        let lantern_fish: Vec<usize> = load_data()?.iter().map(|f| f.to_usize()).collect();
+        for lf in lantern_fish {
+            fish[lf] += 1;
+        }
+
+        for _ in 0..days {
+            let zero_fish = fish[0];
+            for i in 0..8 {
+                fish[i] = fish[i + 1];
+            }
+            fish[6] += zero_fish;
+            fish[8] = zero_fish;
+        }
+
+        Ok(fish.iter().sum())
+    }
+
+    pub fn part1() -> Result<()> {
+        print_answer(6, 1, breed_lantern_fish(80)?)
+    }
+
+    pub fn part2() -> Result<()> {
+        print_answer(6, 2, breed_lantern_fish(256)?)
     }
 }
 //</editor-fold>
