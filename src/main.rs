@@ -8,10 +8,10 @@ use std::str::FromStr;
 use anyhow::Result;
 use nom::bytes::complete::tag;
 use nom::multi::separated_list1;
-use nom::{character, IResult};
+use nom::{character, IResult, Parser, ToUsize};
 
 fn main() -> Result<()> {
-    day6::part2()
+    day7::part2()
 }
 
 fn load_raw(day: usize) -> Result<String> {
@@ -31,8 +31,19 @@ where
         .collect()
 }
 
-fn parse_comma_separated_numbers(input: &str) -> IResult<&str, Vec<u32>> {
-    separated_list1(tag(","), character::complete::u32)(input)
+fn parse_usize(input: &str) -> IResult<&str, usize> {
+    character::complete::u32.map(|u| u.to_usize()).parse(input)
+}
+
+fn parse_comma_separated_numbers(input: &str) -> IResult<&str, Vec<usize>> {
+    separated_list1(tag(","), parse_usize)(input)
+}
+
+fn load_comma_separated_numbers(day: usize) -> Result<Vec<usize>> {
+    let input = load_raw(day)?;
+    let (_, numbers) = parse_comma_separated_numbers(&input).map_err(|e| e.to_owned())?;
+
+    Ok(numbers)
 }
 
 fn print_answer<T: Display>(day: usize, part: usize, answer: T) -> Result<()> {
@@ -239,7 +250,7 @@ mod day4 {
 
     #[derive(Clone, Debug)]
     struct Row {
-        numbers: HashSet<u32>,
+        numbers: HashSet<usize>,
         called: usize,
     }
 
@@ -254,12 +265,12 @@ mod day4 {
 
     #[derive(Clone, Debug)]
     struct Board {
-        numbers: HashSet<u32>,
+        numbers: HashSet<usize>,
         rows: Vec<Row>,
     }
 
     impl Board {
-        pub fn new(numbers: Vec<u32>) -> Self {
+        pub fn new(numbers: Vec<usize>) -> Self {
             let mut rows: Vec<Row> = vec![Row::new(); 10];
             for (idx, number) in numbers.iter().enumerate() {
                 rows[idx / 5].numbers.insert(*number);
@@ -272,7 +283,7 @@ mod day4 {
         }
 
         // Only returns true if this is the first row to win for this board
-        pub fn call_number(&mut self, number: u32) -> bool {
+        pub fn call_number(&mut self, number: usize) -> bool {
             if self.has_won() {
                 return false;
             }
@@ -294,7 +305,7 @@ mod day4 {
 
     fn parse_board(input: &str) -> IResult<&str, Board> {
         let (input, _) = c::line_ending(input)?;
-        let row = preceded(c::space0, separated_list1(c::space1, c::u32));
+        let row = preceded(c::space0, separated_list1(c::space1, parse_usize));
         let (input, rows) = many_m_n(5, 5, terminated(row, c::line_ending))(input)?;
         let numbers = rows.into_iter().flatten().collect();
 
@@ -307,7 +318,7 @@ mod day4 {
         Ok((input, boards))
     }
 
-    fn load_data() -> Result<(Vec<u32>, Vec<Board>)> {
+    fn load_data() -> Result<(Vec<usize>, Vec<Board>)> {
         let input = load_raw(4)?;
         let (input, numbers) = terminated(parse_comma_separated_numbers, c::line_ending)(&input)
             .map_err(|e| e.to_owned())?;
@@ -316,8 +327,12 @@ mod day4 {
         Ok((numbers, boards))
     }
 
-    fn calculate_score(board: &Board, called_numbers: &HashSet<u32>, winning_number: u32) -> u32 {
-        let sum_uncalled: u32 = board.numbers.difference(called_numbers).sum();
+    fn calculate_score(
+        board: &Board,
+        called_numbers: &HashSet<usize>,
+        winning_number: usize,
+    ) -> usize {
+        let sum_uncalled: usize = board.numbers.difference(called_numbers).sum();
         sum_uncalled * winning_number
     }
 
@@ -470,10 +485,11 @@ mod day5 {
 
 //<editor-fold desc="Day 6">
 mod day6 {
-    use crate::*;
     use nom::ToUsize;
 
-    fn load_data() -> Result<Vec<u32>> {
+    use crate::*;
+
+    fn load_data() -> Result<Vec<usize>> {
         let input = load_raw(6)?;
         let (_, lantern_fish) =
             parse_comma_separated_numbers(input.as_ref()).map_err(|e| e.to_owned())?;
@@ -506,6 +522,51 @@ mod day6 {
 
     pub fn part2() -> Result<()> {
         print_answer(6, 2, breed_lantern_fish(256)?)
+    }
+}
+//</editor-fold>
+
+//<editor-fold desc="Day 7">
+mod day7 {
+    use crate::*;
+
+    fn move_crabs<F: Fn(usize) -> usize>(calc_fuel: F) -> Result<usize> {
+        let input = load_comma_separated_numbers(7)?;
+
+        let mut crabs = vec![0; *input.iter().max().unwrap_or(&0) + 1];
+
+        for crab in input {
+            crabs[crab] += 1;
+        }
+
+        let mut min_fuel = usize::MAX;
+
+        'target_pos_loop: for target_pos in 0..crabs.len() {
+            let mut fuel = 0;
+            for crab_pos in 0..crabs.len() {
+                let diff = (crab_pos as i64 - target_pos as i64).abs();
+                fuel += calc_fuel(diff as usize) * crabs[crab_pos];
+                if fuel > min_fuel {
+                    continue 'target_pos_loop;
+                }
+            }
+
+            if fuel < min_fuel {
+                min_fuel = fuel;
+            }
+        }
+
+        Ok(min_fuel)
+    }
+
+    pub fn part1() -> Result<()> {
+        let answer = move_crabs(|diff| diff)?;
+        print_answer(6, 1, answer)
+    }
+
+    pub fn part2() -> Result<()> {
+        let answer = move_crabs(|diff| diff * (diff + 1) / 2)?;
+        print_answer(6, 2, answer)
     }
 }
 //</editor-fold>
