@@ -5,13 +5,13 @@ use std::fmt::Display;
 use std::fs::read_to_string;
 use std::str::FromStr;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use nom::bytes::complete::tag;
 use nom::multi::separated_list1;
 use nom::{character, IResult, Parser, ToUsize};
 
 fn main() -> Result<()> {
-    day7::part2()
+    day8::part2()
 }
 
 fn load_raw(day: usize) -> Result<String> {
@@ -47,7 +47,8 @@ fn load_comma_separated_numbers(day: usize) -> Result<Vec<usize>> {
 }
 
 fn print_answer<T: Display>(day: usize, part: usize, answer: T) -> Result<()> {
-    Ok(println!("Day {:2}, part {}: {}", day, part, answer))
+    println!("Day {:2}, part {}: {}", day, part, answer);
+    Ok(())
 }
 
 //<editor-fold desc="Day 1">
@@ -55,10 +56,7 @@ mod day1 {
     use crate::*;
 
     fn calc(part: usize, data: Vec<i32>) -> usize {
-        data.iter()
-            .zip(data.iter().skip(1))
-            .filter(|(a, b)| b > a)
-            .count()
+        data.windows(2).filter(|s| s[1] > s[0]).count()
     }
 
     pub fn part1() -> Result<()> {
@@ -68,11 +66,7 @@ mod day1 {
     }
 
     pub fn part2() -> Result<()> {
-        let data: Vec<i32> = load(1)?
-            .as_slice()
-            .windows(3)
-            .map(|w| w.iter().sum())
-            .collect();
+        let data: Vec<i32> = load(1)?.windows(3).map(|w| w.iter().sum()).collect();
         let answer = calc(2, data);
         print_answer(1, 2, answer)
     }
@@ -277,7 +271,7 @@ mod day4 {
                 rows[idx % 5 + 5].numbers.insert(*number);
             }
             Board {
-                numbers: HashSet::from_iter(numbers.to_owned()),
+                numbers: HashSet::from_iter(numbers),
                 rows,
             }
         }
@@ -356,7 +350,7 @@ mod day4 {
             .map(|(winning_board, last_called_number)| {
                 calculate_score(&winning_board, &called_numbers, last_called_number)
             })
-            .ok_or(anyhow::Error::msg("no winner found"))?;
+            .ok_or(anyhow!("no winner found"))?;
 
         print_answer(4, 1, answer)
     }
@@ -380,7 +374,7 @@ mod day4 {
             .map(|(winning_board, called_numbers, last_called_number)| {
                 calculate_score(&winning_board, &called_numbers, last_called_number)
             })
-            .ok_or(anyhow::Error::msg("no winner found"))?;
+            .ok_or(anyhow!("no winner found"))?;
 
         print_answer(4, 2, answer)
     }
@@ -566,6 +560,125 @@ mod day7 {
 
     pub fn part2() -> Result<()> {
         let answer = move_crabs(|diff| diff * (diff + 1) / 2)?;
+        print_answer(6, 2, answer)
+    }
+}
+//</editor-fold>
+
+//<editor-fold desc="Day 8">
+mod day8 {
+    use crate::*;
+    use anyhow::anyhow;
+    use nom::bytes::complete::take_while_m_n;
+    use nom::character::complete::line_ending;
+    use nom::character::streaming::space1;
+    use std::collections::HashSet;
+
+    type Segment = HashSet<char>;
+
+    fn parse_segment(input: &str) -> IResult<&str, Segment> {
+        take_while_m_n(1, 7, |c| c >= 'a' && c <= 'g')
+            .map(|w: &str| HashSet::from_iter(w.chars()))
+            .parse(input)
+    }
+
+    fn parse_line(input: &str) -> IResult<&str, (Vec<Segment>, Vec<Segment>)> {
+        let (input, patterns) = separated_list1(space1, parse_segment)(input)?;
+        let (input, _) = tag(" | ")(input)?;
+        let (input, segments) = separated_list1(space1, parse_segment)(input)?;
+
+        Ok((input, (patterns, segments)))
+    }
+
+    fn load_data() -> Result<Vec<(Vec<Segment>, Vec<Segment>)>> {
+        let input = load_raw(8)?;
+        let (input, data) =
+            separated_list1(line_ending, parse_line)(&input).map_err(|e| e.to_owned())?;
+        Ok(data)
+    }
+
+    fn find_and_pop<I, P: FnMut(&I) -> bool>(v: &mut Vec<I>, pred: P) -> Result<I> {
+        if let Some(pos) = v.iter().position(pred) {
+            Ok(v.swap_remove(pos))
+        } else {
+            Err(anyhow!("element not found"))
+        }
+    }
+
+    fn deduce_numbers(patterns: &[Segment]) -> Result<Vec<HashSet<char>>> {
+        let diff = |a: &HashSet<char>, b: &HashSet<char>| -> Result<char> {
+            let c = a.difference(&b).next().ok_or(anyhow!("diff is empty"))?;
+            Ok(*c)
+        };
+
+        let mut patterns = patterns.to_vec();
+
+        let one = find_and_pop(&mut patterns, |p| p.len() == 2)?;
+        let four = find_and_pop(&mut patterns, |p| p.len() == 4)?;
+        let seven = find_and_pop(&mut patterns, |p| p.len() == 3)?;
+        let eight = find_and_pop(&mut patterns, |p| p.len() == 7)?;
+
+        let two = find_and_pop(&mut patterns, |p| {
+            p.len() == 5 && p.difference(&four).count() == 3
+        })?;
+        let three = find_and_pop(&mut patterns, |p| {
+            p.len() == 5 && p.difference(&one).count() == 3
+        })?;
+        let five = find_and_pop(&mut patterns, |p| p.len() == 5)?;
+
+        let nine = find_and_pop(&mut patterns, |p| {
+            p.len() == 6 && p.difference(&three).count() == 1
+        })?;
+        let zero = find_and_pop(&mut patterns, |p| {
+            p.len() == 6 && p.difference(&seven).count() == 3
+        })?;
+        let six = find_and_pop(&mut patterns, |p| p.len() == 6)?;
+
+        Ok([zero, one, two, three, four, five, six, seven, eight, nine].into())
+    }
+
+    pub fn part1() -> Result<()> {
+        let data = load_data()?;
+
+        let lengths: HashSet<usize> = HashSet::from([2, 3, 4, 7]);
+
+        let answer: usize = data
+            .into_iter()
+            .map(|(_, segments)| {
+                segments
+                    .iter()
+                    .filter(|s| lengths.contains(&s.len()))
+                    .count()
+            })
+            .sum();
+
+        print_answer(6, 1, answer)
+    }
+
+    pub fn part2() -> Result<()> {
+        let data = load_data()?;
+
+        let to_number = |ss: &Vec<Segment>, mapping: &Vec<HashSet<char>>| -> Result<usize> {
+            let to_digit = |s: &Segment| {
+                mapping
+                    .iter()
+                    .position(|d| d == s)
+                    .ok_or(anyhow!("digit not found"))
+            };
+            let decoded = ss.iter().map(to_digit).collect::<Result<Vec<_>>>()?;
+            Ok(decoded[0] * 1000 + decoded[1] * 100 + decoded[2] * 10 + decoded[3])
+        };
+
+        let numbers = data
+            .iter()
+            .map(|(patterns, segments)| {
+                let mapping = deduce_numbers(patterns)?;
+                to_number(segments, &mapping)
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        let answer: usize = numbers.iter().sum();
+
         print_answer(6, 2, answer)
     }
 }
