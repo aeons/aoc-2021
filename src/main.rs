@@ -12,7 +12,7 @@ use nom::bytes::complete::tag;
 use nom::multi::separated_list1;
 
 fn main() -> Result<()> {
-    day9::part2()
+    day10::part2()
 }
 
 fn load_raw(day: usize) -> Result<String> {
@@ -792,5 +792,93 @@ mod day9 {
             .product();
 
         print_answer(9, 2, answer)
+    }
+}
+
+mod day10 {
+    use crate::*;
+
+    #[derive(Debug)]
+    enum SyntaxCheck {
+        Ok,
+        Incomplete(Vec<char>),
+        Corrupted(char),
+        Err(anyhow::Error),
+    }
+
+    fn check_line(line: &str) -> SyntaxCheck {
+        let opening = |c: char| match c {
+            ')' => Some('('),
+            ']' => Some('['),
+            '}' => Some('{'),
+            '>' => Some('<'),
+            _ => None
+        };
+
+        let mut stack = Vec::new();
+
+
+        for c in line.chars() {
+            match c {
+                '(' | '[' | '{' | '<' => stack.push(c),
+                ')' | ']' | '}' | '>' => {
+                    let open = stack.pop();
+                    if open != opening(c) {
+                        return SyntaxCheck::Corrupted(c);
+                    }
+                }
+                _ => return SyntaxCheck::Err(anyhow!("unknown character '{}'", c))
+            }
+        }
+
+        if stack.is_empty() {
+            SyntaxCheck::Ok
+        } else {
+            SyntaxCheck::Incomplete(stack)
+        }
+    }
+
+    pub fn part1() -> Result<()> {
+        let lines: Vec<String> = load(10)?;
+
+        let score = |c| match c {
+            ')' => 3,
+            ']' => 57,
+            '}' => 1197,
+            '>' => 25137,
+            _ => 0
+        };
+
+        let answer: usize = lines.iter()
+            .map(|line| check_line(line))
+            .filter_map(|check| match check {
+                SyntaxCheck::Corrupted(c) => Some(score(c)),
+                _ => None
+            })
+            .sum();
+
+        print_answer(10, 1, answer)
+    }
+
+    pub fn part2() -> Result<()> {
+        let lines: Vec<String> = load(10)?;
+
+        let score = |chars: Vec<char>| chars.iter().rev()
+            .map(|c| match c {
+                '(' => 1,
+                '[' => 2,
+                '{' => 3,
+                '<' => 4,
+                _ => 0
+            }).fold(0, |acc, score| acc * 5 + score);
+
+        let scores: Vec<usize> = lines.iter()
+            .map(|line| check_line(line))
+            .filter_map(|check| match check {
+                SyntaxCheck::Incomplete(chars) => Some(score(chars)),
+                _ => None
+            }).sorted().collect();
+
+        print_answer(10, 2, scores[scores.len() / 2])
     }
 }
