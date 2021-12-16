@@ -6,12 +6,13 @@ use std::fs::read_to_string;
 use std::str::FromStr;
 
 use anyhow::{anyhow, Result};
+use itertools::Itertools;
+use nom::{character, IResult, Parser, ToUsize};
 use nom::bytes::complete::tag;
 use nom::multi::separated_list1;
-use nom::{character, IResult, Parser, ToUsize};
 
 fn main() -> Result<()> {
-    day8::part2()
+    day9::part2()
 }
 
 fn load_raw(day: usize) -> Result<String> {
@@ -20,9 +21,9 @@ fn load_raw(day: usize) -> Result<String> {
 }
 
 fn load<T>(day: usize) -> Result<Vec<T>>
-where
-    T: FromStr,
-    <T as FromStr>::Err: std::error::Error + Send + Sync + 'static,
+    where
+        T: FromStr,
+        <T as FromStr>::Err: std::error::Error + Send + Sync + 'static,
 {
     let raw_data = read_to_string(format!("data/{:02}.txt", day))?;
     let lines = raw_data.trim().lines();
@@ -51,7 +52,6 @@ fn print_answer<T: Display>(day: usize, part: usize, answer: T) -> Result<()> {
     Ok(())
 }
 
-//<editor-fold desc="Day 1">
 mod day1 {
     use crate::*;
 
@@ -71,9 +71,7 @@ mod day1 {
         print_answer(1, 2, answer)
     }
 }
-//</editor-fold>
 
-//<editor-fold desc="Day 2">
 mod day2 {
     use std::fmt::Debug;
     use std::str::FromStr;
@@ -145,9 +143,7 @@ mod day2 {
         print_answer(2, 2, horiz * depth)
     }
 }
-//</editor-fold>
 
-//<editor-fold desc="Day 3">
 mod day3 {
     use crate::*;
 
@@ -229,16 +225,14 @@ mod day3 {
         print_answer(3, 2, oxy_gen_rating * co2_scrub_rating)
     }
 }
-//</editor-fold>
 
-//<editor-fold desc="Day 4">
 mod day4 {
     use std::collections::HashSet;
 
     use nom::character::complete as c;
+    use nom::IResult;
     use nom::multi::{many1, many_m_n, separated_list1};
     use nom::sequence::{preceded, terminated};
-    use nom::IResult;
 
     use crate::*;
 
@@ -379,18 +373,16 @@ mod day4 {
         print_answer(4, 2, answer)
     }
 }
-//</editor-fold>
 
-//<editor-fold desc="Day 5">
 mod day5 {
     use std::cmp::{max, min};
     use std::collections::{HashMap, HashSet};
 
     use nom::bytes::streaming::tag;
     use nom::character::complete as c;
+    use nom::IResult;
     use nom::multi::separated_list1;
     use nom::sequence::separated_pair;
-    use nom::IResult;
 
     use crate::*;
 
@@ -475,9 +467,7 @@ mod day5 {
         print_answer(5, 2, answer)
     }
 }
-//</editor-fold>
 
-//<editor-fold desc="Day 6">
 mod day6 {
     use nom::ToUsize;
 
@@ -518,9 +508,7 @@ mod day6 {
         print_answer(6, 2, breed_lantern_fish(256)?)
     }
 }
-//</editor-fold>
 
-//<editor-fold desc="Day 7">
 mod day7 {
     use crate::*;
 
@@ -563,16 +551,16 @@ mod day7 {
         print_answer(6, 2, answer)
     }
 }
-//</editor-fold>
 
-//<editor-fold desc="Day 8">
 mod day8 {
-    use crate::*;
+    use std::collections::HashSet;
+
     use anyhow::anyhow;
     use nom::bytes::complete::take_while_m_n;
     use nom::character::complete::line_ending;
     use nom::character::streaming::space1;
-    use std::collections::HashSet;
+
+    use crate::*;
 
     type Segment = HashSet<char>;
 
@@ -652,7 +640,7 @@ mod day8 {
             })
             .sum();
 
-        print_answer(6, 1, answer)
+        print_answer(8, 1, answer)
     }
 
     pub fn part2() -> Result<()> {
@@ -679,7 +667,130 @@ mod day8 {
 
         let answer: usize = numbers.iter().sum();
 
-        print_answer(6, 2, answer)
+        print_answer(8, 2, answer)
     }
 }
-//</editor-fold>
+
+mod day9 {
+    use std::collections::HashSet;
+
+    use nom::bytes::complete::take_while_m_n;
+    use nom::character::{complete as c};
+    use nom::combinator::map_parser;
+    use nom::multi::many1;
+
+    use crate::*;
+
+    #[derive(Debug)]
+    struct HeightMap {
+        heights: Vec<usize>,
+        width: usize,
+        height: usize,
+    }
+
+    impl HeightMap {
+        fn parse_line(input: &str) -> IResult<&str, Vec<usize>> {
+            many1(map_parser(
+                take_while_m_n(1, 1, |c: char| c.is_ascii_digit()),
+                c::u64.map(|d| d.to_usize()),
+            ))(input)
+        }
+
+        fn parse_heights(input: &str) -> IResult<&str, Vec<Vec<usize>>> {
+            separated_list1(c::line_ending, Self::parse_line)(input)
+        }
+
+        pub fn load() -> Result<HeightMap> {
+            let input = load_raw(9)?;
+            let (_, heights) = Self::parse_heights(&input).map_err(|e| e.to_owned())?;
+            let width = heights[0].len();
+            let height = heights.len();
+            let heights = heights.into_iter().flatten().collect();
+
+            Ok(HeightMap {
+                heights,
+                width,
+                height,
+            })
+        }
+
+        pub fn get(&self, x: usize, y: usize) -> usize {
+            self.heights[x + self.width * y]
+        }
+
+        pub fn neighbours(&self, x: usize, y: usize) -> Vec<(usize, usize)> {
+            let mut ns = Vec::new();
+            if x > 0 {
+                ns.push((x - 1, y))
+            }
+            if x < self.width - 1 {
+                ns.push((x + 1, y))
+            }
+            if y > 0 {
+                ns.push((x, y - 1))
+            }
+            if y < self.height - 1 {
+                ns.push((x, y + 1))
+            }
+            ns
+        }
+
+        pub fn low_points(&self) -> Vec<(usize, usize)> {
+            (0..self.width)
+                .cartesian_product(0..self.height)
+                .filter(|&(x, y)| {
+                    let h = self.get(x, y);
+                    self.neighbours(x, y)
+                        .iter()
+                        .map(|&(x, y)| self.get(x, y))
+                        .all(|n| h < n)
+                })
+                .collect()
+        }
+
+        pub fn basin_size(&self, start_x: usize, start_y: usize) -> usize {
+            let mut q = vec![(start_x, start_y)];
+            let mut basin = HashSet::new();
+            basin.insert((start_x, start_y));
+
+            while let Some((x, y)) = q.pop() {
+                let mut valid_neighbours = self
+                    .neighbours(x, y)
+                    .into_iter()
+                    .filter(|&(nx, ny)| !basin.contains(&(nx, ny)) && self.get(nx, ny) < 9)
+                    .collect_vec();
+                basin.extend(valid_neighbours.iter());
+                q.append(&mut valid_neighbours);
+            }
+
+            basin.len()
+        }
+    }
+
+    pub fn part1() -> Result<()> {
+        let height_map = HeightMap::load()?;
+
+        let answer: usize = height_map
+            .low_points()
+            .iter()
+            .map(|&(x, y)| height_map.get(x, y) + 1)
+            .sum();
+
+        print_answer(9, 1, answer)
+    }
+
+    pub fn part2() -> Result<()> {
+        let height_map = HeightMap::load()?;
+
+        let answer: usize = height_map
+            .low_points()
+            .iter()
+            .map(|&(x, y)| height_map.basin_size(x, y))
+            .sorted()
+            .rev()
+            .take(3)
+            .product();
+
+        print_answer(9, 2, answer)
+    }
+}
