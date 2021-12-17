@@ -2,54 +2,78 @@
 #![warn(unused_imports)]
 
 use std::fmt::Display;
-use std::fs::read_to_string;
-use std::str::FromStr;
 
 use anyhow::{anyhow, Result};
 use itertools::Itertools;
-use nom::{character, IResult, Parser, ToUsize};
-use nom::bytes::complete::tag;
-use nom::multi::separated_list1;
 
 fn main() -> Result<()> {
     day10::part2()
 }
 
-fn load_raw(day: usize) -> Result<String> {
-    let data = read_to_string(format!("data/{:02}.txt", day))?;
-    Ok(data)
-}
-
-fn load<T>(day: usize) -> Result<Vec<T>>
-    where
-        T: FromStr,
-        <T as FromStr>::Err: std::error::Error + Send + Sync + 'static,
-{
-    let raw_data = read_to_string(format!("data/{:02}.txt", day))?;
-    let lines = raw_data.trim().lines();
-    lines
-        .map(|line| line.parse().map_err(anyhow::Error::from))
-        .collect()
-}
-
-fn parse_usize(input: &str) -> IResult<&str, usize> {
-    character::complete::u32.map(|u| u.to_usize()).parse(input)
-}
-
-fn parse_comma_separated_numbers(input: &str) -> IResult<&str, Vec<usize>> {
-    separated_list1(tag(","), parse_usize)(input)
-}
-
-fn load_comma_separated_numbers(day: usize) -> Result<Vec<usize>> {
-    let input = load_raw(day)?;
-    let (_, numbers) = parse_comma_separated_numbers(&input).map_err(|e| e.to_owned())?;
-
-    Ok(numbers)
-}
-
 fn print_answer<T: Display>(day: usize, part: usize, answer: T) -> Result<()> {
     println!("Day {:2}, part {}: {}", day, part, answer);
     Ok(())
+}
+
+mod data {
+    use std::fs::read_to_string;
+    use std::str::FromStr;
+
+    use anyhow::Result;
+    use nom::bytes::complete::{tag, take_while_m_n};
+    use nom::combinator::map_parser;
+    use nom::multi::{many1, separated_list1};
+    use nom::{character, IResult, Parser, ToUsize};
+
+    pub fn load_raw(day: usize) -> Result<String> {
+        let data = read_to_string(format!("data/{:02}.txt", day))?;
+        Ok(data)
+    }
+
+    pub fn load<T>(day: usize) -> Result<Vec<T>>
+    where
+        T: FromStr,
+        <T as FromStr>::Err: std::error::Error + Send + Sync + 'static,
+    {
+        let raw_data = read_to_string(format!("data/{:02}.txt", day))?;
+        let lines = raw_data.trim().lines();
+        lines
+            .map(|line| line.parse().map_err(anyhow::Error::from))
+            .collect()
+    }
+
+    pub fn parse_usize(input: &str) -> IResult<&str, usize> {
+        character::complete::u32.map(|u| u.to_usize()).parse(input)
+    }
+
+    pub fn parse_comma_separated_numbers(input: &str) -> IResult<&str, Vec<usize>> {
+        separated_list1(tag(","), parse_usize)(input)
+    }
+
+    pub fn load_comma_separated_numbers(day: usize) -> Result<Vec<usize>> {
+        let input = load_raw(day)?;
+        let (_, numbers) = parse_comma_separated_numbers(&input).map_err(|e| e.to_owned())?;
+
+        Ok(numbers)
+    }
+
+    fn parse_grid_line(input: &str) -> IResult<&str, Vec<usize>> {
+        many1(map_parser(
+            take_while_m_n(1, 1, |c: char| c.is_ascii_digit()),
+            nom::character::complete::u64.map(|d| d.to_usize()),
+        ))(input)
+    }
+
+    fn parse_grid(input: &str) -> IResult<&str, Vec<Vec<usize>>> {
+        separated_list1(nom::character::complete::line_ending, parse_grid_line)(input)
+    }
+
+    pub fn load_grid(day: usize) -> Result<Vec<Vec<usize>>> {
+        let input = load_raw(day)?;
+        let (_, grid) = parse_grid(&input).map_err(|e| e.to_owned())?;
+
+        Ok(grid)
+    }
 }
 
 mod day1 {
@@ -60,13 +84,13 @@ mod day1 {
     }
 
     pub fn part1() -> Result<()> {
-        let answer = calc(1, load(1)?);
+        let answer = calc(1, data::load(1)?);
 
         print_answer(1, 1, answer)
     }
 
     pub fn part2() -> Result<()> {
-        let data: Vec<i32> = load(1)?.windows(3).map(|w| w.iter().sum()).collect();
+        let data: Vec<i32> = data::load(1)?.windows(3).map(|w| w.iter().sum()).collect();
         let answer = calc(2, data);
         print_answer(1, 2, answer)
     }
@@ -113,7 +137,7 @@ mod day2 {
         let mut horiz = 0;
         let mut depth = 0;
 
-        for direction in load(2)? {
+        for direction in data::load(2)? {
             match direction {
                 Direction::Forward(n) => horiz += n,
                 Direction::Down(n) => depth += n,
@@ -129,7 +153,7 @@ mod day2 {
         let mut depth = 0;
         let mut aim = 0;
 
-        for direction in load::<Direction>(2)? {
+        for direction in data::load::<Direction>(2)? {
             match direction {
                 Direction::Forward(n) => {
                     horiz += n;
@@ -148,7 +172,7 @@ mod day3 {
     use crate::*;
 
     fn load() -> Result<Vec<usize>> {
-        super::load::<String>(3)?
+        data::load::<String>(3)?
             .iter()
             .map(|s| usize::from_str_radix(s, 2).map_err(anyhow::Error::from))
             .collect()
@@ -230,9 +254,9 @@ mod day4 {
     use std::collections::HashSet;
 
     use nom::character::complete as c;
-    use nom::IResult;
     use nom::multi::{many1, many_m_n, separated_list1};
     use nom::sequence::{preceded, terminated};
+    use nom::IResult;
 
     use crate::*;
 
@@ -293,7 +317,7 @@ mod day4 {
 
     fn parse_board(input: &str) -> IResult<&str, Board> {
         let (input, _) = c::line_ending(input)?;
-        let row = preceded(c::space0, separated_list1(c::space1, parse_usize));
+        let row = preceded(c::space0, separated_list1(c::space1, data::parse_usize));
         let (input, rows) = many_m_n(5, 5, terminated(row, c::line_ending))(input)?;
         let numbers = rows.into_iter().flatten().collect();
 
@@ -307,9 +331,10 @@ mod day4 {
     }
 
     fn load_data() -> Result<(Vec<usize>, Vec<Board>)> {
-        let input = load_raw(4)?;
-        let (input, numbers) = terminated(parse_comma_separated_numbers, c::line_ending)(&input)
-            .map_err(|e| e.to_owned())?;
+        let input = data::load_raw(4)?;
+        let (input, numbers) =
+            terminated(data::parse_comma_separated_numbers, c::line_ending)(&input)
+                .map_err(|e| e.to_owned())?;
         let (_, boards) = parse_boards(input).map_err(|e| e.to_owned())?;
 
         Ok((numbers, boards))
@@ -380,9 +405,9 @@ mod day5 {
 
     use nom::bytes::streaming::tag;
     use nom::character::complete as c;
-    use nom::IResult;
     use nom::multi::separated_list1;
     use nom::sequence::separated_pair;
+    use nom::IResult;
 
     use crate::*;
 
@@ -436,7 +461,7 @@ mod day5 {
     }
 
     fn load_data() -> Result<Vec<Line>> {
-        let data = load_raw(5)?;
+        let data = data::load_raw(5)?;
         let (_, lines) =
             separated_list1(c::line_ending, parse_line)(&data).map_err(|e| e.to_owned())?; // anyhow::Error::from)?;
         Ok(lines)
@@ -474,9 +499,9 @@ mod day6 {
     use crate::*;
 
     fn load_data() -> Result<Vec<usize>> {
-        let input = load_raw(6)?;
+        let input = data::load_raw(6)?;
         let (_, lantern_fish) =
-            parse_comma_separated_numbers(input.as_ref()).map_err(|e| e.to_owned())?;
+            data::parse_comma_separated_numbers(input.as_ref()).map_err(|e| e.to_owned())?;
 
         Ok(lantern_fish)
     }
@@ -513,7 +538,7 @@ mod day7 {
     use crate::*;
 
     fn move_crabs<F: Fn(usize) -> usize>(calc_fuel: F) -> Result<usize> {
-        let input = load_comma_separated_numbers(7)?;
+        let input = data::load_comma_separated_numbers(7)?;
 
         let mut crabs = vec![0; *input.iter().max().unwrap_or(&0) + 1];
 
@@ -556,9 +581,11 @@ mod day8 {
     use std::collections::HashSet;
 
     use anyhow::anyhow;
-    use nom::bytes::complete::take_while_m_n;
+    use nom::bytes::complete::{tag, take_while_m_n};
     use nom::character::complete::line_ending;
     use nom::character::streaming::space1;
+    use nom::multi::separated_list1;
+    use nom::{IResult, Parser};
 
     use crate::*;
 
@@ -579,7 +606,7 @@ mod day8 {
     }
 
     fn load_data() -> Result<Vec<(Vec<Segment>, Vec<Segment>)>> {
-        let input = load_raw(8)?;
+        let input = data::load_raw(8)?;
         let (input, data) =
             separated_list1(line_ending, parse_line)(&input).map_err(|e| e.to_owned())?;
         Ok(data)
@@ -674,11 +701,6 @@ mod day8 {
 mod day9 {
     use std::collections::HashSet;
 
-    use nom::bytes::complete::take_while_m_n;
-    use nom::character::{complete as c};
-    use nom::combinator::map_parser;
-    use nom::multi::many1;
-
     use crate::*;
 
     #[derive(Debug)]
@@ -689,20 +711,8 @@ mod day9 {
     }
 
     impl HeightMap {
-        fn parse_line(input: &str) -> IResult<&str, Vec<usize>> {
-            many1(map_parser(
-                take_while_m_n(1, 1, |c: char| c.is_ascii_digit()),
-                c::u64.map(|d| d.to_usize()),
-            ))(input)
-        }
-
-        fn parse_heights(input: &str) -> IResult<&str, Vec<Vec<usize>>> {
-            separated_list1(c::line_ending, Self::parse_line)(input)
-        }
-
         pub fn load() -> Result<HeightMap> {
-            let input = load_raw(9)?;
-            let (_, heights) = Self::parse_heights(&input).map_err(|e| e.to_owned())?;
+            let heights = data::load_grid(9)?;
             let width = heights[0].len();
             let height = heights.len();
             let heights = heights.into_iter().flatten().collect();
@@ -812,11 +822,10 @@ mod day10 {
             ']' => Some('['),
             '}' => Some('{'),
             '>' => Some('<'),
-            _ => None
+            _ => None,
         };
 
         let mut stack = Vec::new();
-
 
         for c in line.chars() {
             match c {
@@ -827,7 +836,7 @@ mod day10 {
                         return SyntaxCheck::Corrupted(c);
                     }
                 }
-                _ => return SyntaxCheck::Err(anyhow!("unknown character '{}'", c))
+                _ => return SyntaxCheck::Err(anyhow!("unknown character '{}'", c)),
             }
         }
 
@@ -839,21 +848,22 @@ mod day10 {
     }
 
     pub fn part1() -> Result<()> {
-        let lines: Vec<String> = load(10)?;
+        let lines: Vec<String> = data::load(10)?;
 
         let score = |c| match c {
             ')' => 3,
             ']' => 57,
             '}' => 1197,
             '>' => 25137,
-            _ => 0
+            _ => 0,
         };
 
-        let answer: usize = lines.iter()
+        let answer: usize = lines
+            .iter()
             .map(|line| check_line(line))
             .filter_map(|check| match check {
                 SyntaxCheck::Corrupted(c) => Some(score(c)),
-                _ => None
+                _ => None,
             })
             .sum();
 
@@ -861,23 +871,31 @@ mod day10 {
     }
 
     pub fn part2() -> Result<()> {
-        let lines: Vec<String> = load(10)?;
+        let lines: Vec<String> = data::load(10)?;
 
-        let score = |chars: Vec<char>| chars.iter().rev()
-            .map(|c| match c {
-                '(' => 1,
-                '[' => 2,
-                '{' => 3,
-                '<' => 4,
-                _ => 0
-            }).fold(0, |acc, score| acc * 5 + score);
+        let score = |chars: Vec<char>| {
+            chars
+                .iter()
+                .rev()
+                .map(|c| match c {
+                    '(' => 1,
+                    '[' => 2,
+                    '{' => 3,
+                    '<' => 4,
+                    _ => 0,
+                })
+                .fold(0, |acc, score| acc * 5 + score)
+        };
 
-        let scores: Vec<usize> = lines.iter()
+        let scores: Vec<usize> = lines
+            .iter()
             .map(|line| check_line(line))
             .filter_map(|check| match check {
                 SyntaxCheck::Incomplete(chars) => Some(score(chars)),
-                _ => None
-            }).sorted().collect();
+                _ => None,
+            })
+            .sorted()
+            .collect();
 
         print_answer(10, 2, scores[scores.len() / 2])
     }
