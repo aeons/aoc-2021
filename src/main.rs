@@ -7,7 +7,7 @@ use anyhow::{anyhow, Result};
 use itertools::Itertools;
 
 fn main() -> Result<()> {
-    day10::part2()
+    day11::part2()
 }
 
 fn print_answer<T: Display>(day: usize, part: usize, answer: T) -> Result<()> {
@@ -898,5 +898,109 @@ mod day10 {
             .collect();
 
         print_answer(10, 2, scores[scores.len() / 2])
+    }
+}
+
+mod day11 {
+    use std::cmp::min;
+    use std::collections::HashSet;
+    use std::fmt::Formatter;
+
+    use crate::*;
+
+    struct Octopi(Vec<usize>);
+
+    impl Octopi {
+        pub fn load() -> Result<Self> {
+            let data = data::load_grid(11)?;
+            Ok(Octopi(data.into_iter().flatten().collect_vec()))
+        }
+
+        fn increment(&mut self) {
+            for o in self.0.iter_mut() {
+                *o += 1
+            }
+        }
+
+        fn increment_neighbours(&mut self, x: usize, y: usize) {
+            let coords = [-1, 0, 1]
+                .into_iter()
+                .map(|c| c + x as i32)
+                .cartesian_product([-1, 0, 1].into_iter().map(|c| c + y as i32))
+                .collect_vec();
+
+            for (xn, yn) in coords {
+                if (0..10).contains(&xn) && (0..10).contains(&yn) {
+                    self.0[(xn + yn * 10) as usize] += 1;
+                }
+            }
+        }
+
+        fn flash(&mut self) -> usize {
+            let mut has_flashed = HashSet::new();
+            let mut new_flashes = true;
+            while new_flashes {
+                new_flashes = false;
+                for (x, y) in (0..10).cartesian_product(0..10) {
+                    if !has_flashed.contains(&(x, y)) && self.0[x + y * 10] > 9 {
+                        new_flashes = true;
+                        has_flashed.insert((x, y));
+                        self.increment_neighbours(x, y)
+                    }
+                }
+            }
+            has_flashed.len()
+        }
+
+        fn reset_flashers(&mut self) {
+            for o in self.0.iter_mut() {
+                if *o > 9 {
+                    *o = 0
+                }
+            }
+        }
+
+        pub fn step(&mut self) -> usize {
+            self.increment();
+            let flashes = self.flash();
+            self.reset_flashers();
+            flashes
+        }
+    }
+
+    impl Display for Octopi {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            writeln!(f, "----------")?;
+            for i in (0..100).step_by(10) {
+                for &octopus in &self.0[i..(i + 10)] {
+                    if octopus == 0 {
+                        f.write_str("\x1B[1;30;43m0\x1B[0m")?;
+                    } else {
+                        write!(f, "{}", min(octopus, 9))?;
+                    }
+                }
+                writeln!(f)?;
+            }
+            writeln!(f, "----------")
+        }
+    }
+
+    pub fn part1() -> Result<()> {
+        let mut octopi = Octopi::load()?;
+
+        let answer: usize = (0..100).map(|_| octopi.step()).sum();
+
+        print_answer(11, 1, answer)
+    }
+
+    pub fn part2() -> Result<()> {
+        let mut octopi = Octopi::load()?;
+
+        let mut step = 1;
+        while octopi.step() != 100 {
+            step += 1;
+        }
+
+        print_answer(11, 2, step)
     }
 }
